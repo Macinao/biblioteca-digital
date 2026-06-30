@@ -1,0 +1,109 @@
+services:
+
+  postgres-evolution:
+    image: postgres:16
+    container_name: postgres-evolution
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 123456
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - evolution-net
+
+  redis-evolution:
+    image: redis:7
+    container_name: redis-evolution
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - evolution-net
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: evolution
+    restart: unless-stopped
+
+    depends_on:
+      postgres-evolution:
+        condition: service_healthy
+      redis-evolution:
+        condition: service_healthy
+
+    ports:
+      - "8081:8080"
+
+    environment:
+      AUTHENTICATION_API_KEY: 123456
+
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://admin:123456@postgres-evolution:5432/evolution
+
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis-evolution:6379
+
+      TZ: America/Sao_Paulo
+
+    volumes:
+      - evolution_instances:/evolution/instances
+
+    networks:
+      - evolution-net
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.3
+    container_name: elasticsearch
+    restart: unless-stopped
+
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+
+    ports:
+      - "9200:9200"
+
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+    networks:
+      - evolution-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  evolution_instances:
+  elasticsearch_data:
+
+networks:
+  evolution-net:
+    driver: bridge
