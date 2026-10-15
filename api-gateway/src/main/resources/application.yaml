@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  keys:
+    jwt:
+      public-key: ${JWT_PUBLIC_KEY}
+
+  security:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+app:
+  rate-limit:
+    # Quantos proxies/load balancers CONFIÁVEIS ficam entre o cliente e o gateway (Ingress, ALB...).
+    # 0 = gateway exposto direto: o X-Forwarded-For é ignorado (o cliente poderia forjá-lo para fugir do limite).
+    proxies-confiaveis: ${RATE_LIMIT_PROXIES_CONFIAVEIS:0}
+
+services:
+  core-url: ${CORE_SERVICE_URL:http://localhost:8090}
+  search-url: ${SEARCH_SERVICE_URL:http://localhost:8091}
+  storage-url: ${STORAGE_SERVICE_URL:http://localhost:8092}
+  chatbot-url: ${CHATBOT_SERVICE_URL:http://localhost:8094}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-sem-id}] %logger{36} - %msg%n"

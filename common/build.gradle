@@ -1,0 +1,19 @@
+apply plugin: 'java-library'
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+}
+
+dependencies {
+    api 'com.fasterxml.jackson.core:jackson-databind'
+    compileOnly 'jakarta.servlet:jakarta.servlet-api'
+    compileOnly 'org.springframework:spring-web'
+    compileOnly 'org.slf4j:slf4j-api'
+
+    testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    testRuntimeOnly 'ch.qos.logback:logback-classic'
+}

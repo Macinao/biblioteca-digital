@@ -1,0 +1,29 @@
+server:
+  port: 8092
+
+spring:
+  application:
+    name: storage-service
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+  supabase:
+    url: ${SUPABASE_URL}
+    key: ${SUPABASE_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-sem-id}] %logger{36} - %msg%n"

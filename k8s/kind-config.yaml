@@ -1,0 +1,14 @@
+# Configuracao do cluster local (kind) usado so pra validar os manifests
+# desta pasta — nao e o cluster de producao (nao existe um; a Fase 8 do
+# plano documenta k8s como topologia, nao implantacao real).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # host:8888 (nao 8080: o docker-compose ja usa 8080 no host, e os
+      # dois stacks podem ficar de pe ao mesmo tempo) -> NodePort do
+      # api-gateway no cluster.
+      - containerPort: 30080
+        hostPort: 8888
+        protocol: TCP

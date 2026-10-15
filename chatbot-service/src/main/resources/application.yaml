@@ -1,0 +1,38 @@
+server:
+  port: 8094
+
+spring:
+  application:
+    name: chatbot-service
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  ai:
+    openai:
+      # Ollama expoe uma API compativel com OpenAI em /v1; a chave e ignorada por ele,
+      # mas o client OpenAI exige um valor nao-nulo no header Authorization.
+      api-key: ${AI_API_KEY:ollama}
+      base-url: ${AI_BASE_URL:http://localhost:11434/v1}
+      chat:
+        options:
+          model: ${AI_MODEL:qwen3:8b}
+          temperature: 0.3
+
+services:
+  search-url: ${SEARCH_SERVICE_URL:http://localhost:8091}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-sem-id}] %logger{36} - %msg%n"

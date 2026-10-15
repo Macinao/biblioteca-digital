@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-marca-900: #0e1f42;
+  --color-marca-700: #152d5d;
+  --color-marca-600: #1c3b79;
+  --color-marca-50: #eef2fb;
+  --color-destaque: #f5c04d;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body {
+  background-color: #f5f5f5;
+  color: #1f2937;
+  min-height: 100vh;
+}
+
+/* Foco visível em tudo que é interativo (acessibilidade: navegação por teclado). */
+:where(button, a, input, textarea, select):focus-visible {
+  outline: 3px solid var(--color-destaque);
+  outline-offset: 2px;
+}

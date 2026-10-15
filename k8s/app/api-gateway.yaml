@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: smartteca
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: portifolio00-api-gateway:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: JWT_PUBLIC_KEY
+              valueFrom: { secretKeyRef: { name: smartteca-secrets, key: JWT_PUBLIC_KEY } }
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom: { configMapKeyRef: { name: smartteca-config, key: CORS_ALLOWED_ORIGINS } }
+            - name: CORE_SERVICE_URL
+              value: "http://core-service:8090"
+            - name: SEARCH_SERVICE_URL
+              value: "http://search-service:8091"
+            - name: STORAGE_SERVICE_URL
+              value: "http://storage-service:8092"
+            - name: CHATBOT_SERVICE_URL
+              value: "http://chatbot-service:8094"
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+---
+# NodePort pra testar em cluster local (kind) sem depender de um Ingress
+# controller. Em cluster de verdade (nuvem), a escolha de producao seria
+# um Ingress ou Service LoadBalancer — mesma ideia do plano original,
+# NodePort e so o equivalente pratico pra kind/minikube.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: smartteca
+spec:
+  type: NodePort
+  selector:
+    app: api-gateway
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080
