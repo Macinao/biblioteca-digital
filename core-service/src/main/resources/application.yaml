@@ -1,0 +1,62 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: core-service
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  keys:
+    jwt:
+      private-key: ${JWT_PRIVATE_KEY}
+      public-key: ${JWT_PUBLIC_KEY}
+
+  security:
+    cookie:
+      secure: false
+      same-site: Lax
+      domain:
+
+app:
+  admin:
+    # Primeiro bibliotecário (ver AdminSeeder). Vazio = não cria ninguém.
+    matricula: ${ADMIN_MATRICULA:}
+    senha: ${ADMIN_SENHA:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-sem-id}] %logger{36} - %msg%n"
