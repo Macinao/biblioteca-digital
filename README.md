@@ -1,5 +1,7 @@
 # SmartTeca
 
+[![CI](https://github.com/Macinao/biblioteca-digital/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Macinao/biblioteca-digital/actions/workflows/ci.yml)
+
 Sistema de gestão de biblioteca acadêmica com **assistente de IA**, nascido como Trabalho de Conclusão de Curso para a Biblioteca Monsenhor Luiz Gualberto de Andrade (Faculdade Católica da Paraíba) e reestruturado aqui como uma **arquitetura de microsserviços orientada a eventos**.
 
 O repositório reúne o front-end (Next.js) e seis serviços Spring Boot (Java 21) que se comunicam por **Kafka** (fatos de domínio) e **RabbitMQ** (comandos com retentativa e fila morta), com o padrão **Transactional Outbox** garantindo que nenhum evento se perca entre o banco e o broker.
