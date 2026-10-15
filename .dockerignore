@@ -1,0 +1,24 @@
+# Contexto de build dos serviços Java (docker compose usa "." como contexto).
+# O build só precisa do Gradle e dos módulos; todo o resto só atrapalha o cache e infla o contexto.
+
+# Segredos: nunca devem entrar numa camada de build, mesmo que a imagem final só leve o jar
+.env
+.env.*
+dev-keys
+keys
+*.pem
+
+# Outros projetos e documentação: mexer neles não deve recompilar os serviços Java
+frontend
+scripts
+k8s
+observability
+.github
+*.md
+
+# Lixo local
+.git
+.idea
+.gradle
+**/build
+**/node_modules

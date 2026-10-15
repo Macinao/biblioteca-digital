@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evolution
+  namespace: smartteca
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: evolution
+  template:
+    metadata:
+      labels:
+        app: evolution
+    spec:
+      containers:
+        - name: evolution
+          image: evoapicloud/evolution-api:v2.3.7
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AUTHENTICATION_API_KEY
+              valueFrom:
+                secretKeyRef: { name: smartteca-secrets, key: EVOLUTION_APIKEY }
+            - name: DATABASE_PROVIDER
+              value: postgresql
+            # Precisa vir ANTES de DATABASE_CONNECTION_URI: o $(...) so
+            # resolve variaveis ja declaradas mais acima na mesma lista.
+            - name: EVOLUTION_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: smartteca-secrets, key: EVOLUTION_DB_PASSWORD }
+            - name: DATABASE_CONNECTION_URI
+              value: "postgresql://admin:$(EVOLUTION_DB_PASSWORD)@postgres-evolution:5432/evolution"
+            - name: CACHE_REDIS_ENABLED
+              value: "true"
+            - name: CACHE_REDIS_URI
+              value: "redis://redis-evolution:6379"
+            - name: TZ
+              value: America/Sao_Paulo
+          volumeMounts:
+            - name: instances
+              mountPath: /evolution/instances
+      volumes:
+        - name: instances
+          persistentVolumeClaim:
+            claimName: evolution-instances
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: evolution-instances
+  namespace: smartteca
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: evolution
+  namespace: smartteca
+spec:
+  selector:
+    app: evolution
+  ports:
+    - port: 8080
+      targetPort: 8080

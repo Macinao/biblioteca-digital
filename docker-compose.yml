@@ -1,81 +1,33 @@
 services:
 
-  postgres-evolution:
+  # ---------- Infra: dados do core-service ----------
+
+  postgres-core:
     image: postgres:16
-    container_name: postgres-evolution
     restart: unless-stopped
 
     environment:
-      POSTGRES_DB: evolution
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: smartteca
+      POSTGRES_USER: ${DB_USERNAME:-smartteca}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smartteca}
+
+    ports:
+      - "5433:5432"
 
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_core_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d evolution"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-smartteca} -d smartteca"]
       interval: 10s
       timeout: 5s
       retries: 5
 
     networks:
-      - evolution-net
-
-  redis-evolution:
-    image: redis:7
-    container_name: redis-evolution
-    restart: unless-stopped
-
-    ports:
-      - "6379:6379"
-
-    volumes:
-      - redis_data:/data
-
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-    networks:
-      - evolution-net
-
-  evolution:
-    image: evoapicloud/evolution-api:v2.3.7
-    container_name: evolution
-    restart: unless-stopped
-
-    depends_on:
-      postgres-evolution:
-        condition: service_healthy
-      redis-evolution:
-        condition: service_healthy
-
-    ports:
-      - "8081:8080"
-
-    environment:
-      AUTHENTICATION_API_KEY: 123456
-
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://admin:123456@postgres-evolution:5432/evolution
-
-      CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://redis-evolution:6379
-
-      TZ: America/Sao_Paulo
-
-    volumes:
-      - evolution_instances:/evolution/instances
-
-    networks:
-      - evolution-net
+      - smartteca-net
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.3
-    container_name: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
     restart: unless-stopped
 
     environment:
@@ -96,14 +48,409 @@ services:
       retries: 10
 
     networks:
-      - evolution-net
+      - smartteca-net
+
+  redis-chatbot:
+    image: redis:7
+    restart: unless-stopped
+
+    ports:
+      - "6380:6379"
+
+    volumes:
+      - redis_chatbot_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - smartteca-net
+
+  # ---------- Brokers ----------
+
+  kafka:
+    image: apache/kafka:3.9.0
+    restart: unless-stopped
+
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # PLAINTEXT: usado por servicos rodando DENTRO da rede Docker (nome "kafka" resolve la).
+      # HOST: usado por servicos rodando fora do Docker, ex. core-service pelo IntelliJ, que
+      # bota "localhost:29092" no KAFKA_BOOTSTRAP_SERVERS.
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    networks:
+      - smartteca-net
+
+  # Kafka nao expoe metricas Prometheus nativamente — o exporter le via
+  # protocolo Kafka (porta 9092, dentro da rede) e traduz pra /metrics.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_started
+
+    command: ["--kafka.server=kafka:9092"]
+
+    networks:
+      - smartteca-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+
+    # rabbitmq_prometheus vem no plugin, so precisa ser habilitado.
+    # --offline: nao tenta contatar um node ja rodando (ainda nao ha um).
+    command: >
+      sh -c "rabbitmq-plugins enable --offline rabbitmq_prometheus && rabbitmq-server"
+
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./observability/rabbitmq/90-prometheus.conf:/etc/rabbitmq/conf.d/90-prometheus.conf:ro
+
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - smartteca-net
+
+  # ---------- Evolution API (WhatsApp) ----------
+
+  postgres-evolution:
+    image: postgres:16
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD:-123456}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - smartteca-net
+
+  redis-evolution:
+    image: redis:7
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - smartteca-net
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+
+    depends_on:
+      postgres-evolution:
+        condition: service_healthy
+      redis-evolution:
+        condition: service_healthy
+
+    ports:
+      - "8081:8080"
+
+    environment:
+      AUTHENTICATION_API_KEY: ${EVOLUTION_APIKEY:-123456}
+
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://admin:${EVOLUTION_DB_PASSWORD:-123456}@postgres-evolution:5432/evolution
+
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis-evolution:6379
+
+      TZ: America/Sao_Paulo
+
+    volumes:
+      - evolution_instances:/evolution/instances
+
+    networks:
+      - smartteca-net
+
+  # ---------- Serviços SmartTeca ----------
+
+  core-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: core-service
+    restart: unless-stopped
+
+    depends_on:
+      postgres-core:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+    environment:
+      DB_URL: jdbc:postgresql://postgres-core:5432/smartteca
+      DB_USERNAME: ${DB_USERNAME:-smartteca}
+      DB_PASSWORD: ${DB_PASSWORD:-smartteca}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RABBITMQ_HOST: rabbitmq
+      ADMIN_MATRICULA: ${ADMIN_MATRICULA:-}
+      ADMIN_SENHA: ${ADMIN_SENHA:-}
+
+    # Sem "ports": ninguem de fora da rede Docker fala com core-service
+    # direto — so o api-gateway alcanca (Fase 6, isolamento de rede).
+    networks:
+      - smartteca-net
+
+  search-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: search-service
+    restart: unless-stopped
+
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+    environment:
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+    networks:
+      - smartteca-net
+
+  storage-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: storage-service
+    restart: unless-stopped
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+
+    networks:
+      - smartteca-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: notification-service
+    restart: unless-stopped
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      EVOLUTION_URL: http://evolution:8080
+      EVOLUTION_APIKEY: ${EVOLUTION_APIKEY:-123456}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-Biblioteca}
+
+    networks:
+      - smartteca-net
+
+  chatbot-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: chatbot-service
+    restart: unless-stopped
+
+    depends_on:
+      redis-chatbot:
+        condition: service_healthy
+      search-service:
+        condition: service_started
+
+    environment:
+      REDIS_HOST: redis-chatbot
+      REDIS_PORT: 6379
+      AI_API_KEY: ${AI_API_KEY:-ollama}
+      # host.docker.internal: Ollama roda nativo no Windows (fora do Docker), o container
+      # acessa o host por esse nome especial do Docker Desktop.
+      AI_BASE_URL: ${AI_BASE_URL:-http://host.docker.internal:11434/v1}
+      AI_MODEL: ${AI_MODEL:-qwen3:8b}
+      # Modelos com "raciocinio" (qwen3) gastam ~4x mais tokens pensando antes de responder: medido no
+      # Ollama local, 20,8s -> 3,7s numa pergunta simples. "none" desliga; low/medium/high reativam.
+      # Se o provedor de IA nao aceitar reasoning_effort, defina AI_REASONING_EFFORT com um valor valido
+      # para ele ou remova esta linha.
+      SPRING_AI_OPENAI_CHAT_OPTIONS_REASONING_EFFORT: ${AI_REASONING_EFFORT:-none}
+      SEARCH_SERVICE_URL: http://search-service:8091
+
+    networks:
+      - smartteca-net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Endereço que o NAVEGADOR usa para falar com o gateway (não o nome interno do Docker).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+    restart: unless-stopped
+
+    depends_on:
+      - api-gateway
+
+    ports:
+      - "3000:3000"
+
+    networks:
+      - smartteca-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: api-gateway
+    restart: unless-stopped
+
+    depends_on:
+      - core-service
+      - search-service
+      - storage-service
+      - chatbot-service
+
+    environment:
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CORE_SERVICE_URL: http://core-service:8090
+      SEARCH_SERVICE_URL: http://search-service:8091
+      STORAGE_SERVICE_URL: http://storage-service:8092
+      CHATBOT_SERVICE_URL: http://chatbot-service:8094
+
+    # Unico servico com "ports": e a unica porta que sai da rede Docker
+    # pro host (Fase 6, isolamento de rede).
+    ports:
+      - "8080:8080"
+
+    networks:
+      - smartteca-net
+
+  # ---------- Observabilidade ----------
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    # Exposto ao host de proposito — e ferramenta de operacao, nao rota de
+    # negocio; equivalente ao management UI do RabbitMQ (15672).
+    ports:
+      - "9090:9090"
+
+    networks:
+      - smartteca-net
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+
+    depends_on:
+      - prometheus
+
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+
+    # 3001 no host pra nao colidir com o frontend Next.js, que usa 3000.
+    ports:
+      - "3001:3000"
+
+    networks:
+      - smartteca-net
 
 volumes:
   postgres_data:
+  postgres_core_data:
   redis_data:
+  redis_chatbot_data:
   evolution_instances:
   elasticsearch_data:
+  kafka_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
-  evolution-net:
+  smartteca-net:
     driver: bridge

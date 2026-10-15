@@ -1,0 +1,9 @@
+rootProject.name = 'smartteca'
+
+include 'common'
+include 'core-service'
+include 'search-service'
+include 'storage-service'
+include 'notification-service'
+include 'chatbot-service'
+include 'api-gateway'
